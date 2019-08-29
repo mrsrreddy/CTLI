@@ -1,0 +1,24 @@
+---
+  - hosts: demo
+    vars:
+      provider:
+        build_number: "{{build_number}}"
+        app: "{{app}}"
+    become_method: sudo
+    tasks:
+    - name: login to docker hub
+      shell: docker login 172.31.41.215:8083 -u admin -p admin
+      
+    - name: check the container status
+      shell: docker inspect --format="{{.ID}}" {{app}}
+      register: result
+      ignore_errors: true
+      
+      shell: docker pull 172.31.41.215:8083/{{app}}:{{build_number}}
+      when: result|failed
+      
+      shell: docker stop {{app}}
+      when: result|succeeded
+      
+    - name: Run application
+      shell: docker run -d --name {{app}} -p 8080:8080 172.31.41.215:8083/{{app}}:{{build_number}}
