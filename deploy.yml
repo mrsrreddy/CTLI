@@ -1,0 +1,12 @@
+---
+  - hosts: demo
+    become_method: sudo
+    tasks:
+    - name: Make sure that we can connect to the machine-ip
+      command: hostname
+      register: command_result
+      failed_when: "'FAILED' in command_result.stderr"
+    - name: Run The shell script
+      copy:
+         src: /opt/artifacts/pipelines/project/30/package/1/package/pkg/target/myweb-6.0.0-SNAPSHOT.war
+         dest: /home/ec2-user/tomcat8/webapps
