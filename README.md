@@ -9,14 +9,11 @@ Deploying docker image into the kubetnets node
                                 EX:GOCD[pipeline name]
 Step1:maven clean
 
-
 Step2:mvn compile
 
-
-
 step3: mvn package
-
-
+  artifacts: we have to give war file formate
+             source: **/*.war    destination: package
 
 step4:dockerization
 
