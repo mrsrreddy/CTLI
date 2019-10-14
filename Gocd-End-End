@@ -1,1 +1,9 @@
+commit code
+Build the code through maven
+Sonar code analysis
+Archiving artifacts[packages]
+Dockerization[docker build]
+Push image to docker hub/nexus
+Deploying docker image into the kubetnets node
+
 
