@@ -1,0 +1,200 @@
+								 Kubernetes on AWS using Kops
+
+1. Launch Linux EC2 instance in AWS
+2. Create and attach IAM role to EC2 Instance.
+	Kops need permissions to access
+		S3
+		EC2
+		VPC
+		Route53
+		Autoscaling
+		etc..
+ 3. Install Kops on EC2
+
+curl -LO https://github.com/kubernetes/kops/releases/download/$(curl -s https://api.github.com/repos/kubernetes/kops/releases/latest | grep tag_name | cut -d '"' -f 4)/kops-linux-amd64
+chmod +x kops-linux-amd64
+sudo mv kops-linux-amd64 /usr/local/bin/kops
+
+
+4. Install kubectl
+
+$ curl -LO https://storage.googleapis.com/kubernetes-release/release/$(curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)/bin/linux/amd64/kubectl
+$ chmod +x ./kubectl
+$ sudo mv ./kubectl /usr/local/bin/kubectl
+ 5. Create S3 bucket in AWS
+S3 bucket is used by kubernetes to persist cluster state, lets create s3 bucket using aws cli
+**Note:**  Make sure you choose bucket name that is uniqe accross all aws accounts
+
+
+$aws s3 mb s3://javahome.in.k8s --region ap-south-1
+
+6. Create private hosted zone in AWS Route53
+ 1. Head over to aws Route53 and create hostedzone
+ 2. Choose name for example (javahome.in)
+ 3. Choose type as privated hosted zone for VPC
+ 4. Select default vpc in the region you are setting up your cluster
+ 5. Hit create
+
+ 7 Configure environment variables.
+Open .bashrc file 
+
+	vi ~/.bashrc
+
+Add following content into .bashrc, you can choose any arbitary name for cluster and make sure buck name matches the one you created in previous step.
+
+export KOPS_CLUSTER_NAME=javahome.in
+export KOPS_STATE_STORE=s3://javahome.in.k8s
+
+Then running command to reflect variables added to .bashrc
+
+	source ~/.bashrc
+8. Create ssh key pair
+This keypair is used for ssh into kubernetes cluster
+
+$ ssh-keygen
+ 9. Create a Kubernetes cluster definition.
+
+kops create cluster \
+--state=${KOPS_STATE_STORE} \
+--node-count=2 \
+--master-size=t2.micro \
+--node-size=t2.micro \
+--zones=ap-south-1a,ap-south-1b \
+--name=${KOPS_CLUSTER_NAME} \
+--dns private \
+--master-count 1
+
+
+### 10. Create kubernetes cluster
+
+$ kops update cluster --yes
+
+Above command may take some time to create the required infrastructure resources on AWS. Execute the validate command to check its status and wait until the cluster becomes ready
+
+
+$ kops validate cluster
+
+For the above above command, you might see validation failed error initially when you create cluster and it is expected behaviour, you have to wait for some more time and check again.
+
+ 11. To connect to the master
+
+ssh admin@api.javahome.in
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+						Kubernetes Dashboard installation
+.................................................................................................................................................................................................................................................................................................................................
+Step-1
+•Deploy the Kubernetes dashboard to your cluster
+$kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v1.10.1/src/deploy/recommended/kubernetes-dashboard.yaml
+OutPut:
+secret "kubernetes-dashboard-certs" created 
+serviceaccount "kubernetes-dashboard" created 
+role "kubernetes-dashboard-minimal" created 
+rolebinding "kubernetes-dashboard-minimal" created 
+deployment "kubernetes-dashboard" created 
+service "kubernetes-dashboard" created
+
+•Deploy heapster to enable container cluster monitoring and performance analysis on your cluster
+$kubectl apply -f https://raw.githubusercontent.com/kubernetes/heapster/master/deploy/kube-config/influxdb/heapster.yaml
+OutPut:
+serviceaccount "heapster" created 
+deployment "heapster" created 
+service "heapster" created
+...............................................................................................................................................
+Note: Although heapster is deprecated, it is currently the only supported metrics provider for the Kubernetes dashboard. For more information, see https://github.com/kubernetes/dashboard/issues/2986
+...............................................................................................................................................
+
+
+•Deploy the influxdb backend for heapster to your cluster
+$kubectl apply -f https://raw.githubusercontent.com/kubernetes/heapster/master/deploy/kube-config/influxdb/influxdb.yaml
+OutPut::
+deployment "monitoring-influxdb" created 
+service "monitoring-influxdb" created
+
+
+
+•Create the heapster cluster role binding for the dashboard
+$kubectl apply -f https://raw.githubusercontent.com/kubernetes/heapster/master/deploy/kube-config/rbac/heapster-rbac.yaml
+OutPut::
+clusterrolebinding "heapster" created
+
+
+.......................................................................................................................................................................
+Step-2
+				Create an admin Service Account and Cluster Role Binding
+•Create a file called admin-service-account.yaml with the text below. This manifest defines a service account and cluster role binding called admin
+$sudo vim admin-service-account.yaml
+apiVersion: v1 
+kind: ServiceAccount 
+metadata: 
+  name: admin
+  namespace: kube-system 
+--- 
+apiVersion: rbac.authorization.k8s.io/v1beta1 
+kind: ClusterRoleBinding 
+metadata: 
+  name: admin 
+roleRef: 
+  apiGroup: rbac.authorization.k8s.io 
+  kind: ClusterRole 
+  name: cluster-admin 
+subjects: 
+- kind: ServiceAccount 
+  name: admin 
+  namespace: kube-system
+:wq!
+
+•Apply the service account and cluster role binding to your cluster:
+$kubectl apply -f admin-service-account.yaml
+OutPut::
+serviceaccount "admin" created 
+clusterrolebinding.rbac.authorization.k8s.io "admin" created
+..............................................................................................................................................................
+Step-3
+•To connect to the Kubernetes dashboard
+•Retrieve an authentication token for the admin service account. Copy the <authentication_token> value from the output. You use this token to connect to the dashboard
+
+$kubectl -n kube-system describe secret $(kubectl -n kube-system get secret | grep admin | awk '{print $1}')
+OutPut::
+Name: admin-token-b5zv4 
+Namespace: kube-system 
+Labels: <none> 
+Annotations: kubernetes.io/service-account.name=admin kubernetes.io/service-account.uid=bcfe66ac-39be-11e8-97e8-026dce96b6e8 Type: kubernetes.io/service-account-token 
+Data 
+==== 
+ca.crt: 1025 bytes 
+namespace: 11 bytes 
+token: <authentication_token>
+....................................................................................................................................................................
+
+•kubectl -n kube-system get service kubernetes-dashboard
+
+•Now login in to browser type “https://<master-ip>:<node-port>
+
+•For Cloud follow the below steps
+
+$kubectl -n kube-system get service kubernetes-dashboard  -- to see the file configuration
+			[ec2-user@ip-172-31-33-83 ~]$ kubectl -n kube-system get service kubernetes-dashboard
+			NAME                   TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)   AGE
+			kubernetes-dashboard   ClusterIP   100.69.66.237   <none>        443/TCP   8m30s
+
+
+$kubectl -n kube-system edit service kubernetes-dashboard  --to edit the file information
+Note: Change type as a LoadBalancer
+			[ec2-user@ip-172-31-33-83 ~]$ kubectl -n kube-system get service kubernetes-dashboard
+			NAME                   	         TYPE              CLUSTER-IP                                               EXTERNAL-IP                                                               PORT(S)         AGE
+			kubernetes-dashboard      LoadBalancer   100.69.66.237      aa64e8485ef0f11e99ae202333cad7ca-135229135.ap-south-1.elb.amazonaws.com   443:30087/TCP   10m
+copy the ExternalIP.......>GOTO Mozilla fire fox ...>pastit  search it
+                                    select token: 
+                                              copy the tocken form the server past it
+                               then kubernetes dashboard will be opened.	
+
+# Destroy the kubernetes cluster
+
+$ kops delete cluster  --yes
+
+
+		
+
+
